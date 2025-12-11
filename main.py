@@ -133,7 +133,7 @@ def path_relinking(tour1, tour2, dist_cache):
 
 
 # =====================================================
-# FUNÇÕES WORKER PARA PARALELIZAÇÃO
+# FUNÇÕES WORKER
 # =====================================================
 
 def employed_bee_worker(args):
@@ -180,7 +180,7 @@ def path_relinking_worker(args):
 
 
 # =====================================================
-# ABC PARALELO
+# ABC
 # =====================================================
 
 def abc_tsp_parallel(coords, 
@@ -237,7 +237,7 @@ def abc_tsp_parallel(coords,
             iteration += 1
             iter_seed = seed + iteration * 10000
             
-            # EMPLOYED BEES - PARALELO
+            # EMPLOYED BEES
             employed_args = [
                 (i, fs[0], fs[1], dist_cache, n, iter_seed)
                 for i, fs in enumerate(food_sources)
@@ -251,7 +251,7 @@ def abc_tsp_parallel(coords,
                 else:
                     food_sources[idx][2] += 1
 
-            # ONLOOKER BEES - PARALELO
+            # ONLOOKER BEES
             costs = [fs[1] for fs in food_sources]
             probs = [(max(costs) - c + 1) for c in costs]
             s = sum(probs)
@@ -270,7 +270,7 @@ def abc_tsp_parallel(coords,
                 else:
                     food_sources[idx][2] += 1
 
-            # SCOUT BEES - SERIAL (rápido)
+            # SCOUT BEES
             scouts_activated = 0
             for i in range(num_employed):
                 if food_sources[i][2] >= limit_stagnation:
@@ -282,7 +282,7 @@ def abc_tsp_parallel(coords,
                     food_sources[i] = [new_tour, new_cost, 0]
                     scouts_activated += 1
 
-            # PATH RELINKING - PARALELO (a cada 20 iter)
+            # PATH RELINKING - PARALELO
             if iteration % 20 == 0:
                 sorted_sources = sorted(food_sources, key=lambda x: x[1])
                 top_4 = [fs[0] for fs in sorted_sources[:4]]
@@ -384,7 +384,6 @@ def main():
 
     print(f"Instância: {len(coords)} cidades | Seed: {seed}")
 
-    # USA VERSÃO PARALELA
     best_tour, best_dist, elapsed = abc_tsp_parallel(coords, seed=seed)
 
     print(f"\nMelhor distância: {best_dist}")
