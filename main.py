@@ -133,20 +133,18 @@ def path_relinking(tour1, tour2, dist_cache):
 
 
 # =====================================================
-# FUNÇÕES WORKER
+# FUNÇÕES WORKER PARA PARALELIZAÇÃO
 # =====================================================
 
 def employed_bee_worker(args):
+    """Worker para Employed Bee - independente"""
     idx, current_tour, current_cost, dist_cache, n, seed_offset = args
+    
     random.seed(seed_offset + idx)
     
     new_tour = current_tour[:]
-    
-    if random.random() < 0.7:
-        a, b = sorted(random.sample(range(n), 2))
-        new_tour[a:b] = reversed(new_tour[a:b])
-    else:
-        new_tour = double_bridge(new_tour)
+    a, b = sorted(random.sample(range(n), 2))
+    new_tour[a:b] = reversed(new_tour[a:b])
     
     new_tour = two_opt(new_tour, dist_cache)
     new_cost = tour_length(new_tour, dist_cache)
@@ -156,7 +154,9 @@ def employed_bee_worker(args):
 
 
 def onlooker_bee_worker(args):
+    """Worker para Onlooker Bee - independente"""
     worker_id, food_sources, probabilities, dist_cache, n, seed_offset = args
+    
     random.seed(seed_offset + worker_id + 1000)
     
     idx = random.choices(range(len(food_sources)), probabilities)[0]
@@ -174,6 +174,7 @@ def onlooker_bee_worker(args):
 
 
 def path_relinking_worker(args):
+    """Worker para Path Relinking - independente"""
     tour1, tour2, dist_cache = args
     return path_relinking(tour1, tour2, dist_cache)
 
@@ -183,10 +184,10 @@ def path_relinking_worker(args):
 # =====================================================
 
 def abc_tsp_parallel(coords, 
-                     num_employed=25, 
-                     num_onlooker=25, 
-                     max_time_seconds=300,
-                     limit_stagnation=20,
+                     num_employed=20, 
+                     num_onlooker=20, 
+                     max_time_seconds=300, 
+                     limit_stagnation=50,
                      seed=42,
                      n_threads=None,
                      n_processes=None):
@@ -204,24 +205,18 @@ def abc_tsp_parallel(coords,
     print(f"Distance cache: {n}x{n} | Threads: {n_threads} | Processes: {n_processes}")
 
     food_sources = []
-    
-    print("Inicializando população...")
-    init_start = time.time()
-    for _ in range(num_employed):
+    for i in range(num_employed):
         tour = list(range(n))
         random.shuffle(tour)
         tour = two_opt(tour, dist_cache)
         food_sources.append([tour, tour_length(tour, dist_cache), 0])
-    
-    init_time = time.time() - init_start
-    print(f"População inicializada em {init_time:.2f}s")
 
     start_time = time.time()
 
     best_global = min(food_sources, key=lambda x: x[1])[0]
     best_dist = tour_length(best_global, dist_cache)
     
-    print(f"\nABC com limite de tempo: {max_time_seconds}s")
+    print(f"\nABC Paralelo (Tempo: {max_time_seconds}s)")
     print(f"Melhor inicial: {best_dist:.4f}")
     print("-" * 60)
 
@@ -242,6 +237,7 @@ def abc_tsp_parallel(coords,
             iteration += 1
             iter_seed = seed + iteration * 10000
             
+            # EMPLOYED BEES - PARALELO
             employed_args = [
                 (i, fs[0], fs[1], dist_cache, n, iter_seed)
                 for i, fs in enumerate(food_sources)
@@ -255,6 +251,7 @@ def abc_tsp_parallel(coords,
                 else:
                     food_sources[idx][2] += 1
 
+            # ONLOOKER BEES - PARALELO
             costs = [fs[1] for fs in food_sources]
             probs = [(max(costs) - c + 1) for c in costs]
             s = sum(probs)
@@ -273,6 +270,7 @@ def abc_tsp_parallel(coords,
                 else:
                     food_sources[idx][2] += 1
 
+            # SCOUT BEES - SERIAL (rápido)
             scouts_activated = 0
             for i in range(num_employed):
                 if food_sources[i][2] >= limit_stagnation:
@@ -284,6 +282,7 @@ def abc_tsp_parallel(coords,
                     food_sources[i] = [new_tour, new_cost, 0]
                     scouts_activated += 1
 
+            # PATH RELINKING - PARALELO (a cada 20 iter)
             if iteration % 20 == 0:
                 sorted_sources = sorted(food_sources, key=lambda x: x[1])
                 top_4 = [fs[0] for fs in sorted_sources[:4]]
@@ -304,6 +303,7 @@ def abc_tsp_parallel(coords,
                     food_sources[worst_idx] = [best_pr_tour, best_pr_cost, 0]
                     print(f"[PATH RELINKING] Iter {iteration} | Solução: {best_pr_cost:.4f}")
 
+            # MELHOR GLOBAL
             current_best = min(food_sources, key=lambda x: x[1])
             if current_best[1] < best_dist:
                 improvement = best_dist - current_best[1]
@@ -313,6 +313,7 @@ def abc_tsp_parallel(coords,
                 elapsed = time.time() - start_time
                 print(f"[MELHORIA] Iter {iteration:3d} | Dist: {best_dist:.4f} | +{improvement:.4f} ({improvement_pct:.2f}%) | {elapsed:.2f}s")
 
+            # Print periódico a cada 10s
             current_time = time.time()
             if current_time - last_print_time >= 10:
                 elapsed = time.time() - start_time
@@ -345,11 +346,10 @@ def plot_tour(coords, tour, save_path="tour_plot.png"):
     plt.scatter(xs, ys, c="red", s=30)
 
     dist_cache = DistanceCache(coords)
-    title_text = f"Melhor rota: {tour_length(tour, dist_cache):.2f}"
-    plt.title(title_text)
+    plt.title(f"Melhor rota: {tour_length(tour, dist_cache):.2f}")
     plt.tight_layout()
     
-    # Salvar gráfico
+    # Salvar antes de mostrar
     plt.savefig(save_path, dpi=150, bbox_inches='tight')
     print(f"Gráfico salvo: {save_path}")
     
@@ -374,25 +374,25 @@ def save_results(path, best_dist, total_time, n):
 # =====================================================
 
 def main():
-    coords, seed = read_tsp_file("sample.txt")
+    input_file = "sample.txt"
+    results_file = "results.txt"
+
+    coords, seed = read_tsp_file(input_file)
+
     if seed is None:
         seed = 42
 
-    print(f"Instancia: {len(coords)} cidades | Seed: {seed}")
+    print(f"Instância: {len(coords)} cidades | Seed: {seed}")
 
-    max_time = 300
-    best_tour, best_dist, elapsed = abc_tsp_parallel(coords, max_time_seconds=max_time, seed=seed)
+    # USA VERSÃO PARALELA
+    best_tour, best_dist, elapsed = abc_tsp_parallel(coords, seed=seed)
 
-    print(f"\n{'='*60}")
-    print(f"RESULTADO FINAL")
-    print(f"{'='*60}")
-    print(f"Melhor distancia: {best_dist:.2f}")
-    print(f"Tempo de execucao: {elapsed:.2f}s")
-    print(f"{'='*60}")
+    print(f"\nMelhor distância: {best_dist}")
+    print(f"Tempo total: {elapsed:.2f}s")
 
-    save_results("results.txt", best_dist, elapsed, len(coords))
-    
-    print("\nGerando visualizacao...")
+    save_results(results_file, best_dist, elapsed, len(coords))
+
+    print("\nPlotando...")
     plot_tour(coords, best_tour)
 
 
